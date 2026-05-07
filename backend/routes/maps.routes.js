@@ -40,7 +40,6 @@ const mapController = require('../controllers/map.controller');
 //     rideController.endRide
 // )
 router.get('/get-coordinates',
-    authMiddleware.authUser,
     query('address').isString().isLength({ min: 3 }),
     authMiddleware.authUser,mapController.getCoordinates
 );
