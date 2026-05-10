@@ -3,56 +3,22 @@ const router = express.Router();
 const authMiddleware =require('../middlewares/auth.middleware')
 const { body, query } = require('express-validator');
 const mapController = require('../controllers/map.controller');
-// const authMiddleware = require('../middlewares/auth.middleware');
 
 
-// router.post('/create',
-//     authMiddleware.authUser,
-//     body('pickup').isString().isLength({ min: 3 }).withMessage('Invalid pickup address'),
-//     body('destination').isString().isLength({ min: 3 }).withMessage('Invalid destination address'),
-//     body('vehicleType').isString().isIn([ 'auto', 'car', 'moto' ]).withMessage('Invalid vehicle type'),
-//     rideController.createRide
-// )
-
-// router.get('/get-fare',
-//     authMiddleware.authUser,
-//     query('pickup').isString().isLength({ min: 3 }).withMessage('Invalid pickup address'),
-//     query('destination').isString().isLength({ min: 3 }).withMessage('Invalid destination address'),
-//     rideController.getFare
-// )
-
-// router.post('/confirm',
-//     authMiddleware.authCaptain,
-//     body('rideId').isMongoId().withMessage('Invalid ride id'),
-//     rideController.confirmRide
-// )
-
-// router.get('/start-ride',
-//     authMiddleware.authCaptain,
-//     query('rideId').isMongoId().withMessage('Invalid ride id'),
-//     query('otp').isString().isLength({ min: 6, max: 6 }).withMessage('Invalid OTP'),
-//     rideController.startRide
-// )
-
-// router.post('/end-ride',
-//     authMiddleware.authCaptain,
-//     body('rideId').isMongoId().withMessage('Invalid ride id'),
-//     rideController.endRide
-// )
 router.get('/get-coordinates',
-    query('address').isString().isLength({ min: 3 }),
-    authMiddleware.authUser,mapController.getCoordinates
+    authMiddleware.authUser,
+    query('address').isString().isLength({ min: 3 }).withMessage('address query is required and must be at least 3 characters'),
+    mapController.getCoordinates
 );
 router.get('/get-distance-time',
-    query('origin').isString().isLength({ min: 3 }),
-    query('destination').isString().isLength({ min: 3 }),
     authMiddleware.authUser,
+    query('origin').isString().isLength({ min: 3 }).withMessage('origin query is required and must be at least 3 characters'),
+    query('destination').isString().isLength({ min: 3 }).withMessage('destination query is required and must be at least 3 characters'),
     mapController.getDistanceTime
 );
 router.get('/get-suggestions',
-    query('input').isString().isLength({ min: 3 }),
-    query('destination').isString().isLength({ min: 3 }),
     authMiddleware.authUser,
+    query('input').isString().isLength({ min: 3 }).withMessage('input query is required and must be at least 3 characters'),
     mapController.getAutoCompleteSuggestions
 );
 

@@ -17,19 +17,23 @@ const Captainlogin = () => {
   const submitHandler = async (e) => {
     e.preventDefault();
     const captain = {
-      email: email,
+      email: email.toLowerCase(),
       password
     }
 
-    const response = await axios.post(`${import.meta.env.VITE_BASE_URL}/captains/login`, captain)
+    try {
+      const response = await axios.post(`${import.meta.env.VITE_BASE_URL}/captains/login`, captain)
 
-    if (response.status === 200) {
-      const data = response.data
+      if (response.status === 200) {
+        const data = response.data
 
-      setCaptain(data.captain)
-      localStorage.setItem('token', data.token)
-      navigate('/captain-home')
-
+        setCaptain(data.captain)
+        localStorage.setItem('token', data.token)
+        navigate('/captain-home')
+      }
+    } catch (error) {
+      console.error('Captain login error:', error.response?.data || error.message || error)
+      // TODO: show user-friendly login error message
     }
 
     setEmail('')
@@ -38,7 +42,10 @@ const Captainlogin = () => {
   return (
     <div className='p-7 h-screen flex flex-col justify-between'>
       <div>
-        <img className='w-20 mb-3' src="https://www.svgrepo.com/show/505031/uber-driver.svg" alt="" />
+        {/* <img className='w-20 mb-3' src="https://www.svgrepo.com/show/505031/uber-driver.svg" alt="" /> */}
+        <h1 className='text-3xl font-bold my-6'>RideNow</h1>
+        <h1 className='text-4xl font-bold my-6'>Captain Login</h1>
+
 
         <form onSubmit={(e) => {
           submitHandler(e)

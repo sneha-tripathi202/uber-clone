@@ -22,15 +22,19 @@ const UserLogin = () => {
       password: password
     }
 
-    const response = await axios.post(`${"http://localhost:5173/"}/users/login`, userData)
+    try {
+      const response = await axios.post(`${import.meta.env.VITE_BASE_URL}/users/login`, userData)
 
-    if (response.status === 200) {
-      const data = response.data
-      setUser(data.user)
-      localStorage.setItem('token', data.token)
-      navigate('/home')
+      if (response.status === 200) {
+        const data = response.data
+        setUser(data.user)
+        localStorage.setItem('token', data.token)
+        navigate('/home')
+      }
+    } catch (error) {
+      console.error('Login error:', error)
+      // TODO: show user-friendly error message
     }
-
 
     setEmail('')
     setPassword('')
@@ -39,8 +43,9 @@ const UserLogin = () => {
   return (
     <div className='p-7 h-screen flex flex-col justify-between'>
       <div>
-        <img className='w-16 mb-10' src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQYQy-OIkA6In0fTvVwZADPmFFibjmszu2A0g&s" alt="" />
+        {/* <img className='w-16 mb-10' src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQYQy-OIkA6In0fTvVwZADPmFFibjmszu2A0g&s" alt="" /> */}
 
+        <h1 className='text-3xl font-bold my-6'>RideNow</h1>
         <form onSubmit={(e) => {
           submitHandler(e)
         }}>

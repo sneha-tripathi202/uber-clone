@@ -1,83 +1,86 @@
 const axios = require('axios');
 const captainModel = require('../models/captain.model');
 
+const POSITIONSTACK_URL = 'http://api.positionstack.com/v1/forward';
+const OSRM_URL = 'https://router.project-osrm.org/route/v1/driving';
+const POSITIONSTACK_API_KEY = process.env.POSITIONSTACK_API_KEY;
+
+const requestHeaders = {
+    'User-Agent': 'uber-clone-app/1.0',
+};
+
 module.exports.getAddressCoordinate = async (address) => {
-    const apiKey = process.env.GOOGLE_MAPS_API;
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
+    if (!address) {
+        throw new Error('Address is required');
+    }
+
+    const url = `${POSITIONSTACK_URL}?access_key=${POSITIONSTACK_API_KEY}&query=${encodeURIComponent(address)}&limit=1`;
 
     try {
-        const response = await axios.get(url);
-        if (response.data.status === 'OK') {
-            const location = response.data.results[ 0 ].geometry.location;
-            return {
-                ltd: location.lat,
-                lng: location.lng
-            };
-        } else {
-            throw new Error('Unable to fetch coordinates');
+        const response = await axios.get(url, { headers: requestHeaders });
+        const result = response.data.data[0];
+
+        if (!result) {
+            throw new Error(`Coordinates not found for address: ${address}`);
         }
+
+        return {
+            lat: parseFloat(result.latitude),
+            lng: parseFloat(result.longitude),
+        };
     } catch (error) {
-        console.error(error);
+        console.error('getAddressCoordinate error:', error.message || error);
         throw error;
     }
-}
+};
 
 module.exports.getDistanceTime = async (origin, destination) => {
     if (!origin || !destination) {
         throw new Error('Origin and destination are required');
     }
 
-    const apiKey = process.env.GOOGLE_MAPS_API;
+    const originCoords = await module.exports.getAddressCoordinate(origin);
+    const destinationCoords = await module.exports.getAddressCoordinate(destination);
 
-    const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(origin)}&destinations=${encodeURIComponent(destination)}&key=${apiKey}`;
+    const url = `${OSRM_URL}/${originCoords.lng},${originCoords.lat};${destinationCoords.lng},${destinationCoords.lat}?overview=false`;
 
     try {
+        const response = await axios.get(url, { headers: requestHeaders });
+        const route = response.data.routes?.[0];
 
-
-        const response = await axios.get(url);
-        if (response.data.status === 'OK') {
-
-            if (response.data.rows[ 0 ].elements[ 0 ].status === 'ZERO_RESULTS') {
-                throw new Error('No routes found');
-            }
-
-            return response.data.rows[ 0 ].elements[ 0 ];
-        } else {
-            throw new Error('Unable to fetch distance and time');
+        if (!route) {
+            throw new Error('Route not found');
         }
 
-    } catch (err) {
-        console.error(err);
-        throw err;
+        return {
+            origin: originCoords,
+            destination: destinationCoords,
+            distance: route.distance,
+            duration: route.duration,
+        };
+    } catch (error) {
+        console.error('getDistanceTime error:', error.message || error);
+        throw error;
     }
-}
+};
 
 module.exports.getAutoCompleteSuggestions = async (input) => {
     if (!input) {
         throw new Error('query is required');
     }
 
-    const apiKey = process.env.GOOGLE_MAPS_API;
-    const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&key=${apiKey}`;
+    const url = `${POSITIONSTACK_URL}?access_key=${POSITIONSTACK_API_KEY}&query=${encodeURIComponent(input)}&limit=5`;
 
     try {
-        const response = await axios.get(url);
-        if (response.data.status === 'OK') {
-            return response.data.predictions.map(prediction => prediction.description).filter(value => value);
-        } else {
-            throw new Error('Unable to fetch suggestions');
-        }
-    } catch (err) {
-        console.error(err);
-        throw err;
+        const response = await axios.get(url, { headers: requestHeaders });
+        return response.data.data.map(item => item.label).filter(Boolean);
+    } catch (error) {
+        console.error('getAutoCompleteSuggestions error:', error.message || error);
+        throw error;
     }
-}
+};
 
 module.exports.getCaptainsInTheRadius = async (ltd, lng, radius) => {
-
-    // radius in km
-
-
     const captains = await captainModel.find({
         location: {
             $geoWithin: {
@@ -87,6 +90,4 @@ module.exports.getCaptainsInTheRadius = async (ltd, lng, radius) => {
     });
 
     return captains;
-
-
-}
+};
