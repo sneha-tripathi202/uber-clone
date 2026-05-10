@@ -1,6 +1,11 @@
-const LocationSearchPanel = ({ suggestions, setPanelOpen, setPickup, setDestination, activeField, isLoading, error, query }) => {
+const LocationSearchPanel = ({ suggestions, setPanelOpen, setPickup, setDestination, activeField, isLoading, error, query, onSelectSuggestion }) => {
 
     const handleSuggestionClick = (suggestion) => {
+        if (onSelectSuggestion) {
+            onSelectSuggestion(suggestion)
+            return
+        }
+
         if (activeField === 'pickup') {
             setPickup(suggestion)
         } else if (activeField === 'destination') {

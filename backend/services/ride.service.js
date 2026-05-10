@@ -69,6 +69,7 @@ module.exports.createRide = async ({
         user,
         pickup,
         destination,
+        vehicleType,
         otp: getOtp(6),
         fare: fare[ vehicleType ]
     })
@@ -84,7 +85,8 @@ module.exports.confirmRide = async ({
     }
 
     await rideModel.findOneAndUpdate({
-        _id: rideId
+        _id: rideId,
+        status: 'pending'
     }, {
         status: 'accepted',
         captain: captain._id

@@ -13,6 +13,7 @@ import { useContext } from 'react';
 import { UserDataContext } from '../context/UserContext';
 import { useNavigate } from 'react-router-dom';
 import LiveTracking from '../components/LiveTracking';
+import UserProfilePanel from '../components/UserProfilePanel';
 
 const Home = () => {
     const [ pickup, setPickup ] = useState('')
@@ -27,6 +28,7 @@ const Home = () => {
     const [ vehiclePanel, setVehiclePanel ] = useState(false)
     const [ confirmRidePanel, setConfirmRidePanel ] = useState(false)
     const [ vehicleFound, setVehicleFound ] = useState(false)
+    const [ rideSearchAttempt, setRideSearchAttempt ] = useState(0)
     const [ waitingForDriver, setWaitingForDriver ] = useState(false)
     const [ pickupSuggestions, setPickupSuggestions ] = useState([])
     const [ destinationSuggestions, setDestinationSuggestions ] = useState([])
@@ -38,6 +40,11 @@ const Home = () => {
     const [ ride, setRide ] = useState(null)
     const [ findTripError, setFindTripError ] = useState('')
     const [ isFindingTrip, setIsFindingTrip ] = useState(false)
+    const [ pickupLocation, setPickupLocation ] = useState(null)
+    const [ destinationLocation, setDestinationLocation ] = useState(null)
+    const [ routePath, setRoutePath ] = useState([])
+    const [ mapError, setMapError ] = useState('')
+    const [ userProfileOpen, setUserProfileOpen ] = useState(false)
     const suggestionCacheRef = useRef(new Map())
     const suggestionsCooldownUntilRef = useRef(0)
 
@@ -128,6 +135,65 @@ const Home = () => {
         }
     }, [])
 
+    const getAuthHeaders = useCallback(() => ({
+        Authorization: `Bearer ${localStorage.getItem('token')}`
+    }), [])
+
+    const fetchCoordinates = useCallback(async (address) => {
+        const response = await axios.get(`${import.meta.env.VITE_BASE_URL}/maps/get-coordinates`, {
+            params: { address },
+            headers: getAuthHeaders()
+        })
+
+        return response.data
+    }, [ getAuthHeaders ])
+
+    const fetchRoute = useCallback(async (origin, destination) => {
+        const response = await axios.get(`${import.meta.env.VITE_BASE_URL}/maps/get-distance-time`, {
+            params: { origin, destination },
+            headers: getAuthHeaders()
+        })
+
+        setRoutePath(response.data.route || [])
+    }, [ getAuthHeaders ])
+
+    const handleSelectedLocation = useCallback(async (suggestion) => {
+        if (!activeField) return
+
+        const isPickup = activeField === 'pickup'
+        const nextPickup = isPickup ? suggestion : pickup
+        const nextDestination = isPickup ? destination : suggestion
+
+        setMapError('')
+        setPanelOpen(false)
+        setRoutePath([])
+
+        if (isPickup) {
+            setPickup(suggestion)
+            setPickupLocation(null)
+        } else {
+            setDestination(suggestion)
+            setDestinationLocation(null)
+        }
+
+        try {
+            const coordinates = await fetchCoordinates(suggestion)
+
+            if (isPickup) {
+                setPickupLocation(coordinates)
+            } else {
+                setDestinationLocation(coordinates)
+            }
+
+            if (nextPickup.trim().length >= 3 && nextDestination.trim().length >= 3) {
+                await fetchRoute(nextPickup, nextDestination)
+            }
+        } catch (error) {
+            console.error('map selection error:', error.response?.data || error.message || error)
+            setMapError(error.response?.data?.message || 'Unable to show this location on the map.')
+        }
+    }, [ activeField, destination, fetchCoordinates, fetchRoute, pickup ])
+
     useEffect(() => {
         if (!panelOpen || activeField !== 'pickup') return
 
@@ -150,11 +216,25 @@ const Home = () => {
 
     const handlePickupChange = (e) => {
         setPickup(e.target.value)
+        setPickupLocation(null)
+        setRoutePath([])
+        setMapError('')
     }
 
     const handleDestinationChange = (e) => {
         setDestination(e.target.value)
+        setDestinationLocation(null)
+        setRoutePath([])
+        setMapError('')
     }
+
+    const startLookingForDriver = useCallback((isSearching) => {
+        setVehicleFound(isSearching)
+
+        if (isSearching) {
+            setRideSearchAttempt((attempt) => attempt + 1)
+        }
+    }, [])
 
     const submitHandler = (e) => {
         e.preventDefault()
@@ -291,10 +371,29 @@ const Home = () => {
 
     return (
         <div className='h-screen relative overflow-hidden'>
-            <img className='w-16 absolute left-5 top-5' src="https://upload.wikimedia.org/wikipedia/commons/c/cc/Uber_logo_2018.png" alt="" />
+            <div className='absolute left-5 right-5 top-5 z-20 flex items-center justify-between'>
+                <button
+                    onClick={() => navigate(-1)}
+                    className='flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-md'
+                >
+                    <i className='ri-arrow-left-line text-xl'></i>
+                </button>
+                <h1 className='text-3xl font-bold'>RideNow</h1>
+                <button
+                    onClick={() => setUserProfileOpen(true)}
+                    className='flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-md'
+                >
+                    <i className='ri-user-3-line text-xl'></i>
+                </button>
+            </div>
+            {userProfileOpen && <UserProfilePanel user={user} onClose={() => setUserProfileOpen(false)} />}
             <div className='h-screen w-screen'>
                 {/* image for temporary use  */}
-                <LiveTracking />
+                <LiveTracking
+                    pickupLocation={pickupLocation}
+                    destinationLocation={destinationLocation}
+                    routePath={routePath}
+                />
             </div>
             <div className=' flex flex-col justify-end h-screen absolute top-0 w-full'>
                 <div className='h-[30%] p-6 bg-white relative'>
@@ -337,6 +436,7 @@ const Home = () => {
                         {isFindingTrip ? 'Finding trip...' : 'Find Trip'}
                     </button>
                     {findTripError && <p className='text-red-600 text-sm mt-2'>{findTripError}</p>}
+                    {mapError && <p className='text-red-600 text-sm mt-2'>{mapError}</p>}
                 </div>
                 <div ref={panelRef} className='bg-white h-0'>
                     <LocationSearchPanel
@@ -349,6 +449,7 @@ const Home = () => {
                         isLoading={isLoadingSuggestions}
                         error={suggestionsError}
                         query={activeField === 'pickup' ? pickup : destination}
+                        onSelectSuggestion={handleSelectedLocation}
                     />
                 </div>
             </div>
@@ -365,15 +466,17 @@ const Home = () => {
                     fare={fare}
                     vehicleType={vehicleType}
 
-                    setConfirmRidePanel={setConfirmRidePanel} setVehicleFound={setVehicleFound} />
+                    setConfirmRidePanel={setConfirmRidePanel} setVehicleFound={startLookingForDriver} />
             </div>
             <div ref={vehicleFoundRef} className='fixed w-full z-10 bottom-0 translate-y-full bg-white px-3 py-6 pt-12'>
                 <LookingForDriver
+                    key={rideSearchAttempt}
                     createRide={createRide}
                     pickup={pickup}
                     destination={destination}
                     fare={fare}
                     vehicleType={vehicleType}
+                    isOpen={vehicleFound}
                     setVehicleFound={setVehicleFound} />
             </div>
             <div ref={waitingForDriverRef} className='fixed w-full  z-10 bottom-0  bg-white px-3 py-6 pt-12'>

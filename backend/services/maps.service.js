@@ -156,14 +156,14 @@ module.exports.getDistanceTime = async (origin, destination) => {
     const cacheKey = getCacheKey('distance-time', origin, destination);
     const cached = getCached(cacheKey);
 
-    if (cached) {
+    if (cached?.route) {
         return cached;
     }
 
     const originCoords = await module.exports.getAddressCoordinate(origin);
     const destinationCoords = await module.exports.getAddressCoordinate(destination);
 
-    const url = `${OSRM_URL}/${originCoords.lng},${originCoords.lat};${destinationCoords.lng},${destinationCoords.lat}?overview=false`;
+    const url = `${OSRM_URL}/${originCoords.lng},${originCoords.lat};${destinationCoords.lng},${destinationCoords.lat}?overview=full&geometries=geojson`;
 
     try {
         const response = await axios.get(url, { headers: requestHeaders });
@@ -178,6 +178,7 @@ module.exports.getDistanceTime = async (origin, destination) => {
             destination: destinationCoords,
             distance: route.distance,
             duration: route.duration,
+            route: route.geometry?.coordinates?.map(([ lng, lat ]) => ({ lat, lng })) || [],
         };
 
         setCached(cacheKey, distanceTime);
@@ -235,12 +236,22 @@ module.exports.getAutoCompleteSuggestions = async (input) => {
 
 module.exports.getCaptainsInTheRadius = async (lat, lng, radius) => {
     const captains = await captainModel.find({
-        location: {
-            $geoWithin: {
-                $centerSphere: [ [ lng, lat ], radius / 6371 ]
-            }
-        }
+        'location.ltd': { $exists: true },
+        'location.lng': { $exists: true },
     });
 
-    return captains;
+    return captains.filter((captain) => {
+        const captainLat = captain.location?.ltd;
+        const captainLng = captain.location?.lng;
+
+        if (typeof captainLat !== 'number' || typeof captainLng !== 'number') {
+            return false;
+        }
+
+        const latDistance = (captainLat - lat) * 111;
+        const lngDistance = (captainLng - lng) * 111 * Math.cos((lat * Math.PI) / 180);
+        const distanceInKm = Math.sqrt((latDistance ** 2) + (lngDistance ** 2));
+
+        return distanceInKm <= radius;
+    });
 };
