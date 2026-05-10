@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { LoadScript, GoogleMap, Marker } from '@react-google-maps/api'
+import React, { useState, useEffect, useCallback } from 'react'
+import { GoogleMap, useJsApiLoader } from '@react-google-maps/api'
 
 const containerStyle = {
     width: '100%',
@@ -11,8 +11,17 @@ const center = {
     lng: -38.523
 };
 
+const libraries = [ 'marker' ];
+
 const LiveTracking = () => {
     const [ currentPosition, setCurrentPosition ] = useState(center);
+    const [ map, setMap ] = useState(null);
+    const [ marker, setMarker ] = useState(null);
+
+    const { isLoaded } = useJsApiLoader({
+        googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
+        libraries
+    });
 
     useEffect(() => {
         navigator.geolocation.getCurrentPosition((position) => {
@@ -49,20 +58,48 @@ const LiveTracking = () => {
 
         updatePosition(); // Initial position update
 
-        const intervalId = setInterval(updatePosition, 1000); // Update every 10 seconds
+        const intervalId = setInterval(updatePosition, 10000); // Update every 10 seconds
 
+        return () => clearInterval(intervalId);
     }, []);
 
+    useEffect(() => {
+        if (!isLoaded || !map) return;
+
+        if (!marker) {
+            const advancedMarker = new window.google.maps.marker.AdvancedMarkerElement({
+                map,
+                position: currentPosition
+            });
+            setMarker(advancedMarker);
+            return;
+        }
+
+        marker.position = currentPosition;
+    }, [isLoaded, map, marker, currentPosition]);
+
+    const onLoad = useCallback((loadedMap) => {
+        setMap(loadedMap);
+    }, []);
+
+    const onUnmount = useCallback(() => {
+        if (marker) {
+            marker.map = null;
+            setMarker(null);
+        }
+        setMap(null);
+    }, [marker]);
+
+    if (!isLoaded) return null;
+
     return (
-        <LoadScript googleMapsApiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}>
-            <GoogleMap
-                mapContainerStyle={containerStyle}
-                center={currentPosition}
-                zoom={15}
-            >
-                <Marker position={currentPosition} />
-            </GoogleMap>
-        </LoadScript>
+        <GoogleMap
+            mapContainerStyle={containerStyle}
+            center={currentPosition}
+            zoom={15}
+            onLoad={onLoad}
+            onUnmount={onUnmount}
+        />
     )
 }
 
