@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react'
-import { GoogleMap, useJsApiLoader } from '@react-google-maps/api'
+import { useState, useEffect } from 'react'
+import { GoogleMap, Marker, useJsApiLoader } from '@react-google-maps/api'
 
 const containerStyle = {
     width: '100%',
@@ -11,16 +11,11 @@ const center = {
     lng: -38.523
 };
 
-const libraries = [ 'marker' ];
-
 const LiveTracking = () => {
     const [ currentPosition, setCurrentPosition ] = useState(center);
-    const [ map, setMap ] = useState(null);
-    const [ marker, setMarker ] = useState(null);
 
     const { isLoaded } = useJsApiLoader({
-        googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
-        libraries
+        googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY
     });
 
     useEffect(() => {
@@ -63,33 +58,6 @@ const LiveTracking = () => {
         return () => clearInterval(intervalId);
     }, []);
 
-    useEffect(() => {
-        if (!isLoaded || !map) return;
-
-        if (!marker) {
-            const advancedMarker = new window.google.maps.marker.AdvancedMarkerElement({
-                map,
-                position: currentPosition
-            });
-            setMarker(advancedMarker);
-            return;
-        }
-
-        marker.position = currentPosition;
-    }, [isLoaded, map, marker, currentPosition]);
-
-    const onLoad = useCallback((loadedMap) => {
-        setMap(loadedMap);
-    }, []);
-
-    const onUnmount = useCallback(() => {
-        if (marker) {
-            marker.map = null;
-            setMarker(null);
-        }
-        setMap(null);
-    }, [marker]);
-
     if (!isLoaded) return null;
 
     return (
@@ -97,9 +65,9 @@ const LiveTracking = () => {
             mapContainerStyle={containerStyle}
             center={currentPosition}
             zoom={15}
-            onLoad={onLoad}
-            onUnmount={onUnmount}
-        />
+        >
+            <Marker position={currentPosition} />
+        </GoogleMap>
     )
 }
 

@@ -21,7 +21,7 @@ module.exports.createRide = async (req, res) => {
 
 
 
-        const captainsInRadius = await mapService.getCaptainsInTheRadius(pickupCoordinates.ltd, pickupCoordinates.lng, 2);
+        const captainsInRadius = await mapService.getCaptainsInTheRadius(pickupCoordinates.lat, pickupCoordinates.lng, 2);
 
         ride.otp = ""
 
@@ -56,7 +56,7 @@ module.exports.getFare = async (req, res) => {
         const fare = await rideService.getFare(pickup, destination);
         return res.status(200).json(fare);
     } catch (err) {
-        return res.status(500).json({ message: err.message });
+        return res.status(err.statusCode || 500).json({ message: err.message });
     }
 }
 
@@ -129,5 +129,5 @@ module.exports.endRide = async (req, res) => {
         return res.status(200).json(ride);
     } catch (err) {
         return res.status(500).json({ message: err.message });
-    } s
+    }
 }

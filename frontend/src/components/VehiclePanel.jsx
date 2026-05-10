@@ -35,7 +35,7 @@ const VehiclePanel = (props) => {
                 props.setConfirmRidePanel(true)
                 props.selectVehicle('auto')
             }} className='flex border-2 active:border-black mb-2 rounded-xl w-full p-3  items-center justify-between'>
-                <img className='h-10' src="https://www.uber-assets.com/image/upload/f_auto,q_auto:eco,c_fill,h_368,w_552/v1648431773/assets/1d/db8c56-0204-4ce4-81ce-56a11a07fe98/original/Uber_Auto_558x372_pixels_Desktop.png" alt="" />
+                <img className='h-10' src="https://www.bing.com/images/search?view=detailV2&ccid=gERohywp&id=4D3600070B73FAD83B7BE17926C139907E27DBFA&thid=OIP.gERohywpalGF3NjolmHt5wHaE7&mediaurl=https%3A%2F%2Fclipart-library.com%2F2023%2FUber_Auto_312x208_pixels_Mobile.png&exph=637&expw=956&q=uber+moto+images+download+icon+png&FORM=IRPRST&ck=3B4488F4D7F4C83633D9EEB1CDA68F82&selectedIndex=63&itb=1&cw=1375&ch=659&ajaxhist=0&ajaxserp=0" alt="" />
                 <div className='ml-2 w-1/2'>
                     <h4 className='font-medium text-base'>UberAuto <span><i className="ri-user-3-fill"></i>3</span></h4>
                     <h5 className='font-medium text-sm'>3 mins away </h5>

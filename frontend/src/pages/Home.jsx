@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useGSAP } from '@gsap/react';
 import gsap from 'gsap';
 import axios from 'axios';
@@ -34,6 +34,9 @@ const Home = () => {
     const [ fare, setFare ] = useState({})
     const [ vehicleType, setVehicleType ] = useState(null)
     const [ ride, setRide ] = useState(null)
+    const [ findTripError, setFindTripError ] = useState('')
+    const suggestionCacheRef = useRef(new Map())
+    const suggestionsCooldownUntilRef = useRef(0)
 
     const navigate = useNavigate()
 
@@ -42,52 +45,97 @@ const Home = () => {
 
     useEffect(() => {
         socket.emit("join", { userType: "user", userId: user._id })
-    }, [ user ])
+    }, [ socket, user ])
 
-    socket.on('ride-confirmed', ride => {
+    useEffect(() => {
+        const handleRideConfirmed = (ride) => {
+            setVehicleFound(false)
+            setWaitingForDriver(true)
+            setRide(ride)
+        }
+
+        const handleRideStarted = (ride) => {
+            console.log("ride")
+            setWaitingForDriver(false)
+            navigate('/riding', { state: { ride } }) // Updated navigate to include ride data
+        }
+
+        socket.on('ride-confirmed', handleRideConfirmed)
+        socket.on('ride-started', handleRideStarted)
+
+        return () => {
+            socket.off('ride-confirmed', handleRideConfirmed)
+            socket.off('ride-started', handleRideStarted)
+        }
+    }, [ socket, navigate ])
 
 
-        setVehicleFound(false)
-        setWaitingForDriver(true)
-        setRide(ride)
-    })
+    const fetchSuggestions = useCallback(async (input, setSuggestions) => {
+        const query = input.trim()
 
-    socket.on('ride-started', ride => {
-        console.log("ride")
-        setWaitingForDriver(false)
-        navigate('/riding', { state: { ride } }) // Updated navigate to include ride data
-    })
+        if (query.length < 3) {
+            setSuggestions([])
+            return
+        }
 
+        if (Date.now() < suggestionsCooldownUntilRef.current) {
+            setSuggestions([])
+            return
+        }
 
-    const handlePickupChange = async (e) => {
-        setPickup(e.target.value)
+        const cacheKey = query.toLowerCase()
+        if (suggestionCacheRef.current.has(cacheKey)) {
+            setSuggestions(suggestionCacheRef.current.get(cacheKey))
+            return
+        }
+
         try {
             const response = await axios.get(`${import.meta.env.VITE_BASE_URL}/maps/get-suggestions`, {
-                params: { input: e.target.value },
+                params: { input: query },
                 headers: {
                     Authorization: `Bearer ${localStorage.getItem('token')}`
                 }
-
             })
-            setPickupSuggestions(response.data)
-        } catch {
-            // handle error
+
+            suggestionCacheRef.current.set(cacheKey, response.data)
+            setSuggestions(response.data)
+        } catch (error) {
+            if (error.response?.status === 429) {
+                suggestionsCooldownUntilRef.current = Date.now() + 60000
+            } else {
+                console.error('suggestions error:', error.response?.data || error.message || error)
+            }
+
+            setSuggestions([])
         }
+    }, [])
+
+    useEffect(() => {
+        if (!panelOpen || activeField !== 'pickup') return
+
+        const timeoutId = setTimeout(() => {
+            fetchSuggestions(pickup, setPickupSuggestions)
+        }, 400)
+
+        return () => clearTimeout(timeoutId)
+    }, [ activeField, panelOpen, pickup, fetchSuggestions ])
+
+    useEffect(() => {
+        if (!panelOpen || activeField !== 'destination') return
+
+        const timeoutId = setTimeout(() => {
+            fetchSuggestions(destination, setDestinationSuggestions)
+        }, 400)
+
+        return () => clearTimeout(timeoutId)
+    }, [ activeField, panelOpen, destination, fetchSuggestions ])
+
+    const handlePickupChange = (e) => {
+        setPickup(e.target.value)
     }
 
-    const handleDestinationChange = async (e) => {
+    const handleDestinationChange = (e) => {
         setDestination(e.target.value)
-        try {
-            const response = await axios.get(`${import.meta.env.VITE_BASE_URL}/maps/get-suggestions`, {
-                params: { input: e.target.value },
-                headers: {
-                    Authorization: `Bearer ${localStorage.getItem('token')}`
-                }
-            })
-            setDestinationSuggestions(response.data)
-        } catch {
-            // handle error
-        }
     }
 
     const submitHandler = (e) => {
@@ -167,6 +215,13 @@ const Home = () => {
 
 
     async function findTrip() {
+        setFindTripError('')
+
+        if (pickup.trim().length < 3 || destination.trim().length < 3) {
+            setFindTripError('Please enter pickup and destination addresses.')
+            return
+        }
+
         setVehiclePanel(true)
         setPanelOpen(false)
 
@@ -181,7 +236,8 @@ const Home = () => {
             setFare(response.data)
         } catch (error) {
             console.error('findTrip error:', error.response?.data || error.message || error)
-            // TODO: show user-friendly error notification
+            setVehiclePanel(false)
+            setFindTripError(error.response?.data?.message || 'Unable to calculate fare right now.')
         }
     }
 
@@ -250,6 +306,7 @@ const Home = () => {
                         className='bg-black text-white px-4 py-2 rounded-lg mt-3 w-full'>
                         Find Trip
                     </button>
+                    {findTripError && <p className='text-red-600 text-sm mt-2'>{findTripError}</p>}
                 </div>
                 <div ref={panelRef} className='bg-white h-0'>
                     <LocationSearchPanel
