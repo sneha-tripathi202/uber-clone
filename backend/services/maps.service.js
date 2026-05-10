@@ -1,6 +1,7 @@
 const axios = require('axios');
 const captainModel = require('../models/captain.model');
 
+const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
 const POSITIONSTACK_URL = 'http://api.positionstack.com/v1/forward';
 const OSRM_URL = 'https://router.project-osrm.org/route/v1/driving';
 const POSITIONSTACK_API_KEY = process.env.POSITIONSTACK_API_KEY;
@@ -31,15 +32,61 @@ const setCached = (key, value) => {
     });
 };
 
+const getProviderError = (response) => response?.data?.error;
+
+const isRateLimitError = (statusCode, providerError, message = '') => {
+    const providerCode = String(providerError?.code || '').toLowerCase();
+    const providerMessage = String(providerError?.message || message).toLowerCase();
+
+    return statusCode === 429
+        || providerCode.includes('limit')
+        || providerCode.includes('quota')
+        || providerMessage.includes('rate limit')
+        || providerMessage.includes('usage limit')
+        || providerMessage.includes('quota');
+};
+
 const normalizeProviderError = (error, fallbackMessage) => {
+    if (error.statusCode) {
+        return error;
+    }
+
     const statusCode = error.response?.status;
+    const providerError = getProviderError(error.response);
     const message = statusCode === 429
+        || isRateLimitError(statusCode, providerError, error.message)
         ? 'Map provider rate limit reached. Please wait a minute and try again.'
-        : error.response?.data?.error?.message || error.message || fallbackMessage;
+        : providerError?.message || error.message || fallbackMessage;
 
     const normalizedError = new Error(message);
-    normalizedError.statusCode = statusCode || 500;
+    normalizedError.statusCode = isRateLimitError(statusCode, providerError, message) ? 429 : statusCode || 500;
     return normalizedError;
+};
+
+const throwIfProviderError = (response, fallbackMessage) => {
+    const providerError = getProviderError(response);
+
+    if (!providerError) {
+        return;
+    }
+
+    throw normalizeProviderError({ response }, fallbackMessage);
+};
+
+const getProviderData = (response) => Array.isArray(response?.data?.data) ? response.data.data : [];
+
+const searchNominatim = async (query, limit = 5) => {
+    const response = await axios.get(NOMINATIM_URL, {
+        params: {
+            q: query,
+            format: 'jsonv2',
+            addressdetails: 1,
+            limit,
+        },
+        headers: requestHeaders,
+    });
+
+    return Array.isArray(response.data) ? response.data : [];
 };
 
 module.exports.getAddressCoordinate = async (address) => {
@@ -54,26 +101,50 @@ module.exports.getAddressCoordinate = async (address) => {
         return cached;
     }
 
-    const url = `${POSITIONSTACK_URL}?access_key=${POSITIONSTACK_API_KEY}&query=${encodeURIComponent(address)}&limit=1`;
-
     try {
-        const response = await axios.get(url, { headers: requestHeaders });
-        const result = response.data.data[0];
+        const result = (await searchNominatim(address, 1))[0];
 
         if (!result) {
             throw new Error(`Coordinates not found for address: ${address}`);
         }
 
         const coordinates = {
-            lat: parseFloat(result.latitude),
-            lng: parseFloat(result.longitude),
+            lat: parseFloat(result.lat),
+            lng: parseFloat(result.lon),
         };
 
         setCached(cacheKey, coordinates);
         return coordinates;
     } catch (error) {
-        console.error('getAddressCoordinate error:', error.message || error);
-        throw normalizeProviderError(error, 'Coordinates not found');
+        console.error('getAddressCoordinate nominatim error:', error.message || error);
+
+        if (!POSITIONSTACK_API_KEY) {
+            throw normalizeProviderError(error, 'Coordinates not found');
+        }
+
+        const url = `${POSITIONSTACK_URL}?access_key=${POSITIONSTACK_API_KEY}&query=${encodeURIComponent(address)}&limit=1`;
+
+        try {
+            const response = await axios.get(url, { headers: requestHeaders });
+            throwIfProviderError(response, 'Coordinates not found');
+
+            const result = getProviderData(response)[0];
+
+            if (!result) {
+                throw new Error(`Coordinates not found for address: ${address}`);
+            }
+
+            const coordinates = {
+                lat: parseFloat(result.latitude),
+                lng: parseFloat(result.longitude),
+            };
+
+            setCached(cacheKey, coordinates);
+            return coordinates;
+        } catch (fallbackError) {
+            console.error('getAddressCoordinate fallback error:', fallbackError.message || fallbackError);
+            throw normalizeProviderError(fallbackError, 'Coordinates not found');
+        }
     }
 };
 
@@ -129,17 +200,36 @@ module.exports.getAutoCompleteSuggestions = async (input) => {
         return cached;
     }
 
-    const url = `${POSITIONSTACK_URL}?access_key=${POSITIONSTACK_API_KEY}&query=${encodeURIComponent(input)}&limit=5`;
-
     try {
-        const response = await axios.get(url, { headers: requestHeaders });
-        const suggestions = response.data.data.map(item => item.label).filter(Boolean);
+        const suggestions = (await searchNominatim(input, 5))
+            .map(item => item.display_name)
+            .filter(Boolean);
 
         setCached(cacheKey, suggestions);
         return suggestions;
     } catch (error) {
-        console.error('getAutoCompleteSuggestions error:', error.message || error);
-        throw normalizeProviderError(error, 'Suggestions not found');
+        console.error('getAutoCompleteSuggestions nominatim error:', error.message || error);
+
+        if (!POSITIONSTACK_API_KEY) {
+            throw normalizeProviderError(error, 'Suggestions not found');
+        }
+
+        const url = `${POSITIONSTACK_URL}?access_key=${POSITIONSTACK_API_KEY}&query=${encodeURIComponent(input)}&limit=5`;
+
+        try {
+            const response = await axios.get(url, { headers: requestHeaders });
+            throwIfProviderError(response, 'Suggestions not found');
+
+            const suggestions = getProviderData(response)
+                .map(item => item.label || item.name || item.locality || item.region)
+                .filter(Boolean);
+
+            setCached(cacheKey, suggestions);
+            return suggestions;
+        } catch (fallbackError) {
+            console.error('getAutoCompleteSuggestions fallback error:', fallbackError.message || fallbackError);
+            throw normalizeProviderError(fallbackError, 'Suggestions not found');
+        }
     }
 };
 

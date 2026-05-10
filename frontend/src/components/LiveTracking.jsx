@@ -1,22 +1,24 @@
 import { useState, useEffect } from 'react'
-import { GoogleMap, Marker, useJsApiLoader } from '@react-google-maps/api'
-
-const containerStyle = {
-    width: '100%',
-    height: '100%',
-};
 
 const center = {
-    lat: -3.745,
-    lng: -38.523
+    lat: 28.6139,
+    lng: 77.2090
 };
+
+const getOpenStreetMapUrl = ({ lat, lng }) => {
+    const offset = 0.01
+    const bbox = [
+        lng - offset,
+        lat - offset,
+        lng + offset,
+        lat + offset
+    ].join(',')
+
+    return `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${encodeURIComponent(`${lat},${lng}`)}`
+}
 
 const LiveTracking = () => {
     const [ currentPosition, setCurrentPosition ] = useState(center);
-
-    const { isLoaded } = useJsApiLoader({
-        googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY
-    });
 
     useEffect(() => {
         navigator.geolocation.getCurrentPosition((position) => {
@@ -58,16 +60,13 @@ const LiveTracking = () => {
         return () => clearInterval(intervalId);
     }, []);
 
-    if (!isLoaded) return null;
-
     return (
-        <GoogleMap
-            mapContainerStyle={containerStyle}
-            center={currentPosition}
-            zoom={15}
-        >
-            <Marker position={currentPosition} />
-        </GoogleMap>
+        <iframe
+            title="Current location map"
+            className="h-full w-full border-0"
+            src={getOpenStreetMapUrl(currentPosition)}
+            loading="lazy"
+        />
     )
 }
 

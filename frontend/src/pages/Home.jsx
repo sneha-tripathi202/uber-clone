@@ -30,11 +30,14 @@ const Home = () => {
     const [ waitingForDriver, setWaitingForDriver ] = useState(false)
     const [ pickupSuggestions, setPickupSuggestions ] = useState([])
     const [ destinationSuggestions, setDestinationSuggestions ] = useState([])
+    const [ suggestionsError, setSuggestionsError ] = useState('')
+    const [ isLoadingSuggestions, setIsLoadingSuggestions ] = useState(false)
     const [ activeField, setActiveField ] = useState(null)
     const [ fare, setFare ] = useState({})
     const [ vehicleType, setVehicleType ] = useState(null)
     const [ ride, setRide ] = useState(null)
     const [ findTripError, setFindTripError ] = useState('')
+    const [ isFindingTrip, setIsFindingTrip ] = useState(false)
     const suggestionCacheRef = useRef(new Map())
     const suggestionsCooldownUntilRef = useRef(0)
 
@@ -72,22 +75,29 @@ const Home = () => {
 
     const fetchSuggestions = useCallback(async (input, setSuggestions) => {
         const query = input.trim()
+        setSuggestionsError('')
 
         if (query.length < 3) {
             setSuggestions([])
+            setIsLoadingSuggestions(false)
             return
         }
 
         if (Date.now() < suggestionsCooldownUntilRef.current) {
             setSuggestions([])
+            setSuggestionsError('Map suggestions are temporarily rate limited. Please wait a minute and try again.')
+            setIsLoadingSuggestions(false)
             return
         }
 
         const cacheKey = query.toLowerCase()
         if (suggestionCacheRef.current.has(cacheKey)) {
             setSuggestions(suggestionCacheRef.current.get(cacheKey))
+            setIsLoadingSuggestions(false)
             return
         }
+
+        setIsLoadingSuggestions(true)
 
         try {
             const response = await axios.get(`${import.meta.env.VITE_BASE_URL}/maps/get-suggestions`, {
@@ -100,13 +110,21 @@ const Home = () => {
             suggestionCacheRef.current.set(cacheKey, response.data)
             setSuggestions(response.data)
         } catch (error) {
+            const message = error.response?.data?.message || 'Unable to load suggestions right now.'
+
             if (error.response?.status === 429) {
                 suggestionsCooldownUntilRef.current = Date.now() + 60000
+                setSuggestionsError('Map suggestions are temporarily rate limited. Please wait a minute and try again.')
+            } else if (error.response?.status === 401) {
+                setSuggestionsError('Please log in again to load location suggestions.')
             } else {
                 console.error('suggestions error:', error.response?.data || error.message || error)
+                setSuggestionsError(message)
             }
 
             setSuggestions([])
+        } finally {
+            setIsLoadingSuggestions(false)
         }
     }, [])
 
@@ -222,8 +240,7 @@ const Home = () => {
             return
         }
 
-        setVehiclePanel(true)
-        setPanelOpen(false)
+        setIsFindingTrip(true)
 
         try {
             const response = await axios.get(`${import.meta.env.VITE_BASE_URL}/rides/get-fare`, {
@@ -234,10 +251,22 @@ const Home = () => {
             })
 
             setFare(response.data)
+            setPanelOpen(false)
+            setVehiclePanel(true)
         } catch (error) {
-            console.error('findTrip error:', error.response?.data || error.message || error)
+            const isRateLimited = error.response?.status === 429
+            const errorMessage = error.response?.data?.message || 'Unable to calculate fare right now.'
+
+            if (isRateLimited) {
+                console.warn('findTrip rate limited:', errorMessage)
+            } else {
+                console.error('findTrip error:', error.response?.data || error.message || error)
+            }
+
             setVehiclePanel(false)
-            setFindTripError(error.response?.data?.message || 'Unable to calculate fare right now.')
+            setFindTripError(errorMessage)
+        } finally {
+            setIsFindingTrip(false)
         }
     }
 
@@ -280,7 +309,7 @@ const Home = () => {
                     }}>
                         <div className="line absolute h-16 w-1 top-[50%] -translate-y-1/2 left-5 bg-gray-700 rounded-full"></div>
                         <input
-                            onClick={() => {
+                            onFocus={() => {
                                 setPanelOpen(true)
                                 setActiveField('pickup')
                             }}
@@ -291,7 +320,7 @@ const Home = () => {
                             placeholder='Add a pick-up location'
                         />
                         <input
-                            onClick={() => {
+                            onFocus={() => {
                                 setPanelOpen(true)
                                 setActiveField('destination')
                             }}
@@ -303,8 +332,9 @@ const Home = () => {
                     </form>
                     <button
                         onClick={findTrip}
-                        className='bg-black text-white px-4 py-2 rounded-lg mt-3 w-full'>
-                        Find Trip
+                        disabled={isFindingTrip}
+                        className='bg-black text-white px-4 py-2 rounded-lg mt-3 w-full disabled:bg-gray-500 disabled:cursor-not-allowed'>
+                        {isFindingTrip ? 'Finding trip...' : 'Find Trip'}
                     </button>
                     {findTripError && <p className='text-red-600 text-sm mt-2'>{findTripError}</p>}
                 </div>
@@ -316,6 +346,9 @@ const Home = () => {
                         setPickup={setPickup}
                         setDestination={setDestination}
                         activeField={activeField}
+                        isLoading={isLoadingSuggestions}
+                        error={suggestionsError}
+                        query={activeField === 'pickup' ? pickup : destination}
                     />
                 </div>
             </div>

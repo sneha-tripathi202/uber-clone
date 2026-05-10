@@ -1,6 +1,4 @@
-import React from 'react'
-
-const LocationSearchPanel = ({ suggestions, setVehiclePanel, setPanelOpen, setPickup, setDestination, activeField }) => {
+const LocationSearchPanel = ({ suggestions, setPanelOpen, setPickup, setDestination, activeField, isLoading, error, query }) => {
 
     const handleSuggestionClick = (suggestion) => {
         if (activeField === 'pickup') {
@@ -8,12 +6,16 @@ const LocationSearchPanel = ({ suggestions, setVehiclePanel, setPanelOpen, setPi
         } else if (activeField === 'destination') {
             setDestination(suggestion)
         }
-        // setVehiclePanel(true)
-        // setPanelOpen(false)
+        setPanelOpen(false)
     }
+
+    const shouldShowEmptyState = query.trim().length >= 3 && !isLoading && !error && suggestions.length === 0
 
     return (
         <div>
+            {isLoading && <p className='text-sm text-gray-500 px-3 py-2'>Loading suggestions...</p>}
+            {error && <p className='text-sm text-red-600 px-3 py-2'>{error}</p>}
+            {shouldShowEmptyState && <p className='text-sm text-gray-500 px-3 py-2'>No suggestions found.</p>}
             {/* Display fetched suggestions */}
             {
                 suggestions.map((elem, idx) => (
